@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ポッドナビ</title>
+  <meta name="description" content="移動時間に、ちょうどいい一話。出発地から到着地までの移動時間に近いポッドキャストを提案します。">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <h1>ポッドナビ</h1>
+      <p class="catch">移動時間に、ちょうどいい一話。</p>
+    </header>
+
+    <form id="search-form" class="panel" novalidate>
+      <div class="toolbar" role="group" aria-label="地点の入力方法">
+        <button type="button" id="input-map-btn" class="sub" aria-pressed="true">地図から選ぶ</button>
+        <button type="button" id="input-name-btn" class="sub" aria-pressed="false">場所名から探す</button>
+      </div>
+      <div id="name-fields" class="grid" hidden>
+        <div><label>出発地 <input id="from-input" type="text"></label>
+          <button type="button" id="search-from-btn" class="sub">出発地を検索</button></div>
+        <div><label>到着地 <input id="to-input" type="text"></label>
+          <button type="button" id="search-to-btn" class="sub">到着地を検索</button></div>
+      </div>
+      <div id="candidates" class="candidates" hidden></div>
+      <p id="map-status" class="status" aria-live="polite"></p>
+      <div class="toolbar">
+        <button type="button" id="pick-start-btn" class="sub" aria-pressed="true">出発地を選ぶ</button>
+        <button type="button" id="pick-end-btn" class="sub" aria-pressed="false">到着地を選ぶ</button>
+        <button type="button" id="locate-btn" class="sub">現在地を出発地にする</button>
+        <button type="button" id="swap-btn" class="sub" aria-label="出発地と到着地を入れ替える" disabled>出発地と到着地を入れ替える</button>
+        <button type="button" id="reset-btn" class="sub">選択をリセット</button>
+      </div>
+      <div id="map" role="region" aria-label="出発地と到着地を選ぶ地図"></div>
+      <div id="points-view" class="points-view"></div>
+      <div class="grid">
+        <label>聴きたいコンテンツ
+          <select id="content-select">
+            <option value="podcast" selected>ポッドキャスト</option>
+            <option value="music">音楽</option>
+          </select>
+        </label>
+        <label>移動手段
+          <select id="mode-select">
+            <option value="pedestrian">徒歩</option>
+            <option value="bicycle">自転車</option>
+            <option value="auto">自動車</option>
+          </select>
+        </label>
+        <label>聴きたいジャンル
+          <select id="genre-select">
+            <option value="none" selected>無し</option>
+            <option>お笑い</option><option>ニュース</option><option>ビジネス</option>
+            <option>テクノロジー</option><option>教育</option><option>カルチャー</option>
+            <option>歴史</option><option>科学</option>
+          </select>
+        </label>
+      </div>
+      <label>自由検索（入力するとジャンルより優先）
+        <input id="free-input" type="text" placeholder="例：落語">
+      </label>
+      <label class="check"><input id="manual-check" type="checkbox"> 移動時間を手動入力する</label>
+      <div id="manual-fields" class="manual" hidden>
+        <label>時間 <input id="manual-hours" type="number" min="0" max="24" value="0"></label>
+        <label>分 <input id="manual-minutes" type="number" min="0" max="59" value="20"></label>
+      </div>
+      <button id="submit-button" type="submit">ちょうどいい一話を探す</button>
+    </form>
+
+    <div id="error-area" class="error" role="alert" hidden></div>
+
+    <ol id="progress" class="progress" hidden>
+      <li>出発地点を確認しています</li>
+      <li>到着地点を確認しています</li>
+      <li>移動時間を計算しています</li>
+      <li>ぴったりのエピソードを探しています</li>
+      <li>結果を時間差順に並べています</li>
+    </ol>
+
+    <section id="summary" class="summary" hidden>
+      <h2 id="summary-title"></h2>
+      <dl id="summary-list"></dl>
+    </section>
+    <section id="results" class="results" aria-live="polite"></section>
+    <div id="more-wrap" class="more-wrap" hidden>
+      <button type="button" id="more-btn" class="sub more-btn" aria-label="次の10件を表示する">もっと見る</button>
+    </div>
+
+    <footer>地図データ © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> / <a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>　API：Nominatim / Valhalla / iTunes Search API</footer>
+  </main>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
