@@ -61,9 +61,10 @@ function formatDateJa(iso) {
   if (Number.isNaN(d.getTime())) return "公開日不明";
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
-// ぴったり度：100 - 絶対差秒 ÷ 600 × 100（0〜100に丸める）
-function calcMatchScore(absDiffSec) {
-  const score = Math.round(100 - (absDiffSec / 600) * 100);
+// ぴったり度：100 - 絶対差秒 ÷ max(5, 移動時間秒 ÷ 150)（0〜100に丸める）
+function calcMatchScore(absDiffSec, travelSec) {
+  const n = Math.max(5, travelSec / 150);
+  const score = Math.round(100 - absDiffSec / n);
   return Math.min(100, Math.max(0, score));
 }
 
@@ -206,7 +207,7 @@ async function collectEpisodes(term, travelSec, contentType = "podcast") {
 function selectClosestEpisodes(episodes, travelSec) {
   const scored = episodes.map((e) => {
     const diffSec = e.trackTimeMillis / 1000 - travelSec; // ミリ秒→秒に変換して比較
-    return { episode: e, diffSec, absDiff: Math.abs(diffSec) };
+    return { episode: e, diffSec, absDiff: Math.abs(diffSec), matchScore: calcMatchScore(Math.abs(diffSec), travelSec) };
   }).sort((a, b) => a.absDiff - b.absDiff
     || new Date(b.episode.releaseDate) - new Date(a.episode.releaseDate)
     || String(a.episode.trackName || "").localeCompare(String(b.episode.trackName || ""), "ja"));
@@ -255,7 +256,7 @@ function createCard(item) {
   titleBox.append(el("h3", "", e.trackName || "（タイトルなし）"), el("p", "show", (isMusic ? e.artistName : e.collectionName) || ""));
   if (isMusic && e.collectionName) titleBox.append(el("p", "meta", "アルバム：" + e.collectionName));
   head.append(titleBox);
-  const score = calcMatchScore(item.absDiff);
+  const score = item.matchScore;
   const badge = el("div", "badge", score + "%"); badge.title = "ぴったり度";
   card.append(head, badge, el("p", "diff", describeDifference(item.diffSec)),
     el("p", "meta", `再生時間 ${formatDuration(e.trackTimeMillis / 1000)} ／ ぴったり度 ${score}%`),
