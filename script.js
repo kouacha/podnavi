@@ -5,6 +5,7 @@ const DEFAULTS = { from: "熊本駅", to: "熊本城", mode: "pedestrian", genre
 const WINDOWS_SEC = [180, 300, 600, null]; // 前後3分→5分→10分→制限なし
 const WINDOW_LABELS = ["前後3分以内", "前後5分以内", "前後10分以内", "時間制限なし（近い順）"];
 const MIN_RESULT_COUNT = 10; // 最低でもこの件数を目指す（固定ではない）
+const COLLECT_TARGET_COUNT = 30; // 前後10分以内にこの件数が集まるまで、ジャンル「無し」の追加検索を続ける
 const INITIAL_RESULT_COUNT = 10; // 検索直後に表示する件数
 const SIDE_MIN_COUNT = 3;        // 一般キーワード検索で、移動時間より短い側・長い側それぞれ最低これだけ集める
 const LOAD_MORE_COUNT = 10;      // 「もっと見る」1回で追加する件数
@@ -61,9 +62,10 @@ function formatDateJa(iso) {
   if (Number.isNaN(d.getTime())) return "公開日不明";
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
-// ぴったり度：100 - 絶対差秒 ÷ 600 × 100（0〜100に丸める）
-function calcMatchScore(absDiffSec) {
-  const score = Math.round(100 - (absDiffSec / 600) * 100);
+// ぴったり度：100 - 絶対差秒 ÷ max(5, 移動時間秒 ÷ 150)（0〜100に丸める）
+function calcMatchScore(absDiffSec, travelSec) {
+  const n = Math.max(5, travelSec / 150);
+  const score = Math.round(100 - absDiffSec / n);
   return Math.min(100, Math.max(0, score));
 }
 
@@ -191,10 +193,10 @@ async function collectEpisodes(term, travelSec, contentType = "podcast") {
       if (keywords.length === 1) throw e;
       console.error("keyword search failed:", keywords[i], e);
     }
-    // 前後10分以内の候補が最低件数に届いたら追加検索を終了
+    // 前後10分以内の候補が目標件数に届いたら追加検索を終了
     // 短い側・長い側の両方にも一定数（SIDE_MIN_COUNT）そろうまで、追加検索を続ける
     const pool = [...unique.values()];
-    if (countNear(pool, travelSec, WINDOWS_SEC[2]) >= MIN_RESULT_COUNT
+    if (countNear(pool, travelSec, WINDOWS_SEC[2]) >= COLLECT_TARGET_COUNT
       && countNear(pool, travelSec, WINDOWS_SEC[2], -1) >= SIDE_MIN_COUNT
       && countNear(pool, travelSec, WINDOWS_SEC[2], 1) >= SIDE_MIN_COUNT) break;
   }
@@ -202,22 +204,22 @@ async function collectEpisodes(term, travelSec, contentType = "podcast") {
   return [...unique.values()];
 }
 
-// ===== 絞り込み：最低件数に届くまで範囲を広げる =====
+// ===== 並べ替え：全候補を近い順に残し、上位が収まる範囲をラベルにする =====
 function selectClosestEpisodes(episodes, travelSec) {
   const scored = episodes.map((e) => {
     const diffSec = e.trackTimeMillis / 1000 - travelSec; // ミリ秒→秒に変換して比較
-    return { episode: e, diffSec, absDiff: Math.abs(diffSec) };
+    return { episode: e, diffSec, absDiff: Math.abs(diffSec), matchScore: calcMatchScore(Math.abs(diffSec), travelSec) };
   }).sort((a, b) => a.absDiff - b.absDiff
     || new Date(b.episode.releaseDate) - new Date(a.episode.releaseDate)
     || String(a.episode.trackName || "").localeCompare(String(b.episode.trackName || ""), "ja"));
-  let chosen = [], rangeLabel = "";
+  let rangeLabel = "";
   for (let i = 0; i < WINDOWS_SEC.length; i++) {
     const limit = WINDOWS_SEC[i];
-    chosen = limit === null ? scored : scored.filter((s) => s.absDiff <= limit);
+    const count = limit === null ? scored.length : scored.filter((s) => s.absDiff <= limit).length;
     rangeLabel = WINDOW_LABELS[i];
-    if (chosen.length >= MIN_RESULT_COUNT) break; // 最低件数に届いたら拡大終了
+    if (count >= MIN_RESULT_COUNT) break; // 最低件数が収まる範囲が見つかったら終了
   }
-  return { items: chosen, rangeLabel, shortage: chosen.length < MIN_RESULT_COUNT };
+  return { items: scored, rangeLabel, shortage: scored.length < MIN_RESULT_COUNT };
 }
 
 // ===== 結果表示（innerHTMLは使わずcreateElement） =====
@@ -233,7 +235,7 @@ function renderSummary(info) {
   const rows = [["出発地", info.from], ["到着地", info.to], ["移動手段", MODE_NAMES[info.mode]],
     ["移動時間", formatDuration(info.seconds) + (info.manual ? "（手動入力）" : "")],
     ["移動距離", info.km === null ? "—" : info.km.toFixed(1) + " km"],
-    ["コンテンツ", CONTENT_NAMES[info.contentType]], ["検索キーワード", info.term || "ジャンル指定なし（幅広く検索）"], ["採用した検索範囲", info.rangeLabel]];
+    ["コンテンツ", CONTENT_NAMES[info.contentType]], ["検索キーワード", info.term || "ジャンル指定なし（幅広く検索）"], [`上位${MIN_RESULT_COUNT}件の時間差`, info.rangeLabel]];
   rows.forEach(([k, v]) => { els.summaryList.append(el("dt", "", k), el("dd", "", v || "—")); });
   els.summaryList.append(el("dt", "", "表示件数"), el("dd", "count-text"));
   const old = els.summary.querySelector(".shortage"); if (old) old.remove();
@@ -255,7 +257,7 @@ function createCard(item) {
   titleBox.append(el("h3", "", e.trackName || "（タイトルなし）"), el("p", "show", (isMusic ? e.artistName : e.collectionName) || ""));
   if (isMusic && e.collectionName) titleBox.append(el("p", "meta", "アルバム：" + e.collectionName));
   head.append(titleBox);
-  const score = calcMatchScore(item.absDiff);
+  const score = item.matchScore;
   const badge = el("div", "badge", score + "%"); badge.title = "ぴったり度";
   card.append(head, badge, el("p", "diff", describeDifference(item.diffSec)),
     el("p", "meta", `再生時間 ${formatDuration(e.trackTimeMillis / 1000)} ／ ぴったり度 ${score}%`),
